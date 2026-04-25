@@ -1,3 +1,26 @@
+# --- Específico para DownloaderYT ---
+# Frontend (React/Node)
+**/node_modules/
+**/dist/
+**/dist-ssr/
+**/*.local
+**/.eslintcache
+
+Base de Datos (SQLite WAL)
+Esto ignora la base de datos dentro de DownloaderYT/data/
+**/data/*.db
+**/data/*.db-shm
+**/data/*.db-wal
+# Logs y temporales de Vite
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/vite.config.js.timestamp-*
+# Archivos de entorno (Seguridad)
+**/.env
+**/.env.
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
