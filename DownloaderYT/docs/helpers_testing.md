@@ -72,7 +72,8 @@ curl.exe -i -b cookie.txt -c cookie.txt -X POST "http://127.0.0.1:8000/api/auth/
 Backend:
 
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir .\backend --reload
+Set-Location .\backend
+..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
 Tests:
@@ -115,3 +116,42 @@ Set-Location .\backend
    - host no disponible: `pending_device_online`
    - host disponible: `transferring -> completed` y elimina archivo local
 4. Publicacion de eventos internos por usuario para futura SSE (Fase 4).
+
+### Fase 4 (API REST + SSE) - que debes probar en Swagger
+
+1. Login admin:
+   - `POST /api/auth/login` con `admin/admin1234`
+2. Crear job de video simple:
+   - `POST /api/jobs` con una URL de video.
+3. Crear job de playlist:
+   - `POST /api/jobs` con URL de playlist.
+4. Listar jobs:
+   - `GET /api/jobs`
+5. Ver detalle de job:
+   - `GET /api/jobs/{id}`
+6. Cancelar job:
+   - `POST /api/jobs/{id}/cancel`
+7. Reintentar item en estado fallido/canceled:
+   - `POST /api/items/{id}/retry`
+8. SSE:
+   - `GET /api/events`
+9. Download de item:
+   - `GET /api/items/{id}/download` (solo cuando status sea `completed` y archivo exista)
+
+### Fase 4 - que debe funcionar
+
+1. `POST /api/jobs`:
+   - video normal -> crea 1 `job_item`
+   - playlist -> crea N `job_items` (uno por video)
+2. `config_json` conserva estructura flexible:
+   - acepta `cookies_path`, `ytdlp_options` y campos extra (compatibilidad V2)
+3. Ownership estricto:
+   - recursos de otro usuario devuelven `404`
+4. Cancel/retry:
+   - cancel marca job/items activos en `canceled`
+   - retry solo permite estados validos (`failed`, `canceled`, `pending_device_online`)
+   - cancel durante descarga activa debe cortar el item en curso (no debe terminar en `completed`)
+5. SSE por usuario:
+   - no mezcla eventos de otros usuarios
+6. Download:
+   - solo para item `completed` y archivo disponible

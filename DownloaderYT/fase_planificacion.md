@@ -12,7 +12,7 @@
 - [x] Fase 1 - Infraestructura de datos
 - [x] Fase 2 - Seguridad y usuarios
 - [x] Fase 3 - Motor core (yt_dlp + worker + SMB)
-- [ ] Fase 4 - API REST + SSE
+- [x] Fase 4 - API REST + SSE
 - [ ] Fase 5 - Frontend base
 - [ ] Fase 6 - Frontend dinamico
 
@@ -157,11 +157,42 @@
 
 ## Fase 4 - API REST + SSE
 
-**Estado:** pendiente
+**Estado:** completada  
+**Fecha:** 2026-04-26
 
-### Objetivo
+### Cambios implementados
 
-- Implementar endpoints funcionales con aislamiento estricto por usuario y eventos en tiempo real.
+1. Se implementaron endpoints REST reales (sin placeholders):
+   - `POST /api/jobs`
+   - `GET /api/jobs`
+   - `GET /api/jobs/{id}`
+   - `POST /api/jobs/{id}/cancel`
+   - `POST /api/items/{id}/retry`
+   - `GET /api/items/{id}/download`
+2. Se implemento SSE real en:
+   - `GET /api/events`
+   - stream `text/event-stream` con `connected`, `message`, `ping`
+3. Se implemento aislamiento estricto por usuario:
+   - acceso a jobs/items de otros usuarios responde `404`
+4. Se agrego expansion de playlist en `POST /api/jobs`:
+   - una URL de playlist se resuelve en multiples `job_items`
+   - cada video queda como item independiente para tracking por SSE
+5. Se implemento `config_json` flexible para V2:
+   - `cookies_path`
+   - `ytdlp_options`
+   - campos extra permitidos (forward-compatible)
+6. Se conecto `queue_worker` con config por job:
+   - inyeccion de `cookiefile` y opciones de yt-dlp por job
+7. Se reforzo cancelacion en ejecucion:
+   - `job_items.cancel_requested` en modelo/migracion
+   - cancelacion cooperativa en worker con throttling de chequeo
+   - evita que items cancelados activos terminen en `completed`
+8. Se agregaron schemas Pydantic para contratos de jobs/items/events.
+9. Se agregaron pruebas de API fase 4 (playlists, ownership, retry/download, SSE).
+
+### Resultado esperado de la fase
+
+- API backend usable de punta a punta para que el frontend implemente dashboard reactivo en Fase 5/6.
 
 ---
 

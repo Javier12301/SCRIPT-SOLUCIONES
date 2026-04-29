@@ -4,12 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import db_session, get_current_user
+from app.api.dependencies import db_session, get_current_user, require_admin
 from app.core.config import get_settings
-from app.core.security import build_session_expiry, generate_session_token, hash_session_token, verify_password
-from app.db.models import User
+from app.core.security import build_session_expiry, generate_session_token, hash_password, hash_session_token, verify_password
+from app.db.models import Setting, User
 from app.db.session_store import create_session, revoke_session_by_hash
-from app.schemas.auth import LoginRequest, LoginResponse, LogoutResponse, MeResponse
+from app.schemas.auth import LoginRequest, LoginResponse, LogoutResponse, MeResponse, RegisterRequest, RegisterResponse
 from app.schemas.user import UserPublic
 
 
@@ -86,4 +86,42 @@ def me(current_user: User = Depends(get_current_user)) -> MeResponse:
             role=current_user.role,
             created_at=current_user.created_at,
         )
+    )
+
+
+@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
+def register(
+    payload: RegisterRequest,
+    db: Session = Depends(db_session),
+    _: User = Depends(require_admin),
+) -> RegisterResponse:
+    username = payload.username.strip()
+    if not username:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Username cannot be empty")
+    if username.lower() == "admin":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username is reserved")
+
+    existing_user = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
+    if existing_user is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
+
+    user = User(
+        username=username,
+        password_hash=hash_password(payload.password),
+        role="user",
+    )
+    db.add(user)
+    db.flush()
+    db.add(Setting(user_id=user.id))
+    db.commit()
+    db.refresh(user)
+
+    return RegisterResponse(
+        message="user created",
+        user=UserPublic(
+            id=user.id,
+            username=user.username,
+            role=user.role,
+            created_at=user.created_at,
+        ),
     )

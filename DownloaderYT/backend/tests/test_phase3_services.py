@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
 
 from app.db.models import Job, JobItem, Setting, User
@@ -21,6 +23,29 @@ class FakeDownloader:
         if progress_hook:
             progress_hook({"downloaded_bytes": 10, "total_bytes": 10, "_speed_str": "1MiB/s", "_eta_str": "0s"})
         return DownloadResult(output_path=str(self.output_file), metadata={})
+
+
+class SlowCancelableDownloader:
+    def __init__(self, started_event: threading.Event) -> None:
+        self.started_event = started_event
+
+    def download(self, **kwargs) -> DownloadResult:
+        progress_hook = kwargs.get("progress_hook")
+        for idx in range(1, 60):
+            if idx == 1:
+                self.started_event.set()
+            if progress_hook:
+                progress_hook(
+                    {
+                        "status": "downloading",
+                        "downloaded_bytes": idx * 1000,
+                        "total_bytes": 100000,
+                        "_speed_str": "1MiB/s",
+                        "_eta_str": "1s",
+                    }
+                )
+            time.sleep(0.03)
+        raise AssertionError("Download should have been canceled before finishing")
 
 
 def _seed_job(db_module, *, auto_transfer_enabled: bool, transfer_target_path: str | None) -> tuple[int, int]:
@@ -168,3 +193,95 @@ def test_queue_worker_transfers_and_deletes_local_file(isolated_backend, tmp_pat
         assert item is not None
         assert item.status == "completed"
 
+
+def test_queue_worker_stops_active_download_when_cancel_requested(isolated_backend) -> None:
+    db_module = isolated_backend["db_module"]
+    config_module = isolated_backend["config_module"]
+    db_module.init_db()
+    _, item_id = _seed_job(
+        db_module,
+        auto_transfer_enabled=False,
+        transfer_target_path=None,
+    )
+
+    settings = config_module.get_settings()
+    settings.worker_cancel_check_interval_seconds = 0.05
+    settings.worker_cancel_check_progress_step = 1
+    settings.worker_progress_flush_interval_seconds = 0.05
+
+    started_event = threading.Event()
+    worker = QueueWorker(
+        session_factory=db_module.SessionLocal,
+        settings=settings,
+        downloader=SlowCancelableDownloader(started_event=started_event),
+        event_bus=EventBus(),
+    )
+
+    result_holder: dict[str, object] = {}
+
+    def run_worker_once() -> None:
+        result_holder["result"] = worker.process_once()
+
+    worker_thread = threading.Thread(target=run_worker_once, daemon=True)
+    worker_thread.start()
+    assert started_event.wait(timeout=2), "Download never started"
+
+    with db_module.SessionLocal() as db:
+        item = db.get(JobItem, item_id)
+        assert item is not None
+        item.cancel_requested = True
+        item.status = "canceled"
+        db.commit()
+
+    worker_thread.join(timeout=5)
+    assert not worker_thread.is_alive(), "Worker did not stop after cancel request"
+
+    result = result_holder.get("result")
+    assert result is not None
+    assert result.status == "canceled"
+
+    with db_module.SessionLocal() as db:
+        item = db.get(JobItem, item_id)
+        assert item is not None
+        assert item.status == "canceled"
+        assert item.cancel_requested is True
+
+
+def test_build_ytdlp_options_supports_output_profiles(isolated_backend) -> None:
+    config_module = isolated_backend["config_module"]
+    db_module = isolated_backend["db_module"]
+    worker = QueueWorker(
+        session_factory=db_module.SessionLocal,
+        settings=config_module.get_settings(),
+        downloader=FakeDownloader(Path("dummy.mp4")),
+        event_bus=EventBus(),
+    )
+
+    video_opts = worker._build_ytdlp_options({"output_profile": "video_mp4"})
+    assert video_opts["format"] == "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+    assert video_opts["merge_output_format"] == "mp4"
+    assert any(pp.get("key") == "FFmpegVideoRemuxer" for pp in video_opts.get("postprocessors", []))
+
+    audio_opts = worker._build_ytdlp_options({"output_profile": "audio_mp3"})
+    assert any(pp.get("key") == "FFmpegExtractAudio" for pp in audio_opts.get("postprocessors", []))
+
+    custom_video_opts = worker._build_ytdlp_options(
+        {
+            "output_profile": "video_mp4",
+            "ytdlp_options": {"format": "best[height<=720]"},
+        }
+    )
+    assert custom_video_opts["format"] == "best[height<=720]"
+
+
+def test_normalize_error_message_removes_ansi(isolated_backend) -> None:
+    config_module = isolated_backend["config_module"]
+    db_module = isolated_backend["db_module"]
+    worker = QueueWorker(
+        session_factory=db_module.SessionLocal,
+        settings=config_module.get_settings(),
+        downloader=FakeDownloader(Path("dummy.mp4")),
+        event_bus=EventBus(),
+    )
+    cleaned = worker._normalize_error_message("\u001b[0;31mERROR:\u001b[0m failure")
+    assert cleaned == "ERROR: failure"

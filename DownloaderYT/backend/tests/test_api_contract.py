@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
 
 
@@ -44,25 +43,6 @@ def test_me_requires_auth_cookie(client: TestClient) -> None:
     assert response.status_code == 401
     assert response.json()["detail"] == "Not authenticated"
 
-
-@pytest.mark.parametrize(
-    ("method", "path", "expected_message"),
-    [
-        ("post", "/api/jobs", "Fase 4: create job pendiente"),
-        ("get", "/api/jobs", "Fase 4: list jobs pendiente"),
-        ("get", "/api/jobs/123", "Fase 4: get job pendiente"),
-        ("post", "/api/jobs/123/cancel", "Fase 4: cancel job pendiente"),
-        ("post", "/api/items/9/retry", "Fase 4: retry item pendiente"),
-        ("get", "/api/items/9/download", "Fase 4: download item pendiente"),
-        ("get", "/api/events", "Fase 4: SSE pendiente"),
-    ],
-)
-def test_phase4_placeholders_remain(method: str, path: str, expected_message: str, client: TestClient) -> None:
-    response = getattr(client, method)(path)
-    assert response.status_code == 200
-    assert response.json()["message"] == expected_message
-
-
 def test_admin_endpoint_requires_authentication(client: TestClient) -> None:
     response = client.post("/api/admin/update-extractor")
     assert response.status_code == 401
@@ -78,3 +58,46 @@ def test_admin_endpoint_allows_admin_user(client: TestClient) -> None:
     response = client.post("/api/admin/update-extractor")
     assert response.status_code == 200
     assert response.json()["message"] == "Fase 4: admin update extractor pendiente"
+
+
+def test_register_requires_admin(client: TestClient) -> None:
+    response = client.post(
+        "/api/auth/register",
+        json={"username": "newuser", "password": "newuser123"},
+    )
+    assert response.status_code == 401
+
+
+def test_admin_can_register_user_and_user_can_login(client: TestClient) -> None:
+    login_admin = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "admin1234"},
+    )
+    assert login_admin.status_code == 200
+
+    register_response = client.post(
+        "/api/auth/register",
+        json={"username": "newuser", "password": "newuser123"},
+    )
+    assert register_response.status_code == 201
+    assert register_response.json()["user"]["username"] == "newuser"
+    assert register_response.json()["user"]["role"] == "user"
+
+    duplicate_response = client.post(
+        "/api/auth/register",
+        json={"username": "newuser", "password": "newuser123"},
+    )
+    assert duplicate_response.status_code == 409
+
+    client.post("/api/auth/logout")
+    user_login = client.post(
+        "/api/auth/login",
+        json={"username": "newuser", "password": "newuser123"},
+    )
+    assert user_login.status_code == 200
+
+    forbidden_register = client.post(
+        "/api/auth/register",
+        json={"username": "otheruser", "password": "otheruser123"},
+    )
+    assert forbidden_register.status_code == 403

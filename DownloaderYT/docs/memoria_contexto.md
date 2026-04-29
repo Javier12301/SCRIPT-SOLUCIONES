@@ -8,8 +8,8 @@
   - Fase 1: Infraestructura de datos
   - Fase 2: Auth y usuarios
   - Fase 3: Motor core (`yt_dlp` + worker + SMB)
-- Fases pendientes:
   - Fase 4: API REST + SSE
+- Fases pendientes:
   - Fase 5: Frontend base
   - Fase 6: Frontend dinamico
 
@@ -35,6 +35,21 @@
    - con transferencia activa:
      - host offline -> `pending_device_online`
      - host online -> `transferring -> completed` y elimina archivo local
+
+### API REST + SSE (Fase 4)
+
+1. Endpoints funcionales implementados para `jobs`, `items`, `events`.
+2. Expansion de playlists en `POST /api/jobs`:
+   - una playlist crea multiples `job_items`.
+3. `config_json` extensible para V2:
+   - `cookies_path`, `ytdlp_options`, campos extra.
+4. Ownership estricto:
+   - recursos de otro usuario retornan `404`.
+5. SSE operativo en `/api/events` por usuario autenticado.
+6. Cancelacion robusta:
+   - nuevo campo `job_items.cancel_requested`
+   - cancel cooperativo en worker con throttling de consulta DB
+   - evita carrera donde item cancelado terminaba en `completed`
 
 ## Preferencias de trabajo del usuario
 
@@ -98,4 +113,4 @@ Documentacion de apoyo:
 
 ## Proximo objetivo recomendado
 
-- Fase 4: exponer API REST real de `jobs/items/events` conectada al worker y event bus, manteniendo ownership por usuario.
+- Fase 5: frontend base (estado, layout, consumo de endpoints reales y flujo de autenticacion).

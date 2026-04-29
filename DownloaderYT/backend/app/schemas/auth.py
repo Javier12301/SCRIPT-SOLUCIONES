@@ -25,3 +25,12 @@ class MeResponse(BaseModel):
 class LogoutResponse(BaseModel):
     message: str
 
+
+class RegisterRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=50)
+    password: str = Field(min_length=8, max_length=256)
+
+
+class RegisterResponse(BaseModel):
+    message: str
+    user: UserPublic

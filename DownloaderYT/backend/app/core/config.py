@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     downloads_root: str = "./downloads"
     worker_concurrency: int = 1
     transfer_retry_seconds: int = 60
+    worker_cancel_check_interval_seconds: float = 2.0
+    worker_cancel_check_progress_step: int = 5
+    worker_progress_flush_interval_seconds: float = 0.5
     bootstrap_admin_enabled: bool = True
     bootstrap_admin_username: str = "admin"
     bootstrap_admin_password: str = "admin1234"

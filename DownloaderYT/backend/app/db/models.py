@@ -57,6 +57,7 @@ class JobItem(Base):
     job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False, index=True)
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending")
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     progress_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     downloaded_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
